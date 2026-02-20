@@ -1,10 +1,11 @@
+#include <atomic>
 #include <chrono>
 #include <iomanip>
 #include <iostream>
 #include <random>
 #include <thread>
 
-void work(const int64_t &r, const int64_t tries, int64_t &hits_count, int64_t seed, std::mutex &m)
+void work(const int64_t &r, const int64_t tries, std::atomic<int64_t> &hits_count, int64_t seed)
 {
   std::mt19937                           gen(seed);
   std::uniform_real_distribution<double> dist(0.0, r);
@@ -17,9 +18,7 @@ void work(const int64_t &r, const int64_t tries, int64_t &hits_count, int64_t se
     hits_count_local += ((x * x + y * y) <= r * r);
   }
 
-  m.lock();
-  hits_count += hits_count_local;
-  m.unlock();
+  hits_count.fetch_add(hits_count_local, std::memory_order_relaxed);
 }
 
 int main(int argc, char *argv[])
@@ -40,9 +39,8 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  int64_t    tries    = std::stoll(argv[1]);
-  int64_t    gen_init = argc == 3 ? std::stoll(argv[2]) : 0;
-  std::mutex m;
+  int64_t tries    = std::stoll(argv[1]);
+  int64_t gen_init = argc == 3 ? std::stoll(argv[2]) : 0;
 
   int64_t n_threads = 0;
   int64_t r         = 0;
@@ -56,7 +54,7 @@ int main(int argc, char *argv[])
     }
 
     // Точки, попавшие в окружность
-    int64_t                  hits_count = 0;
+    std::atomic<int64_t>     hits_count = 0;
     std::vector<std::thread> threads;
     threads.reserve(n_threads);
     int64_t base      = tries / n_threads;
@@ -66,8 +64,7 @@ int main(int argc, char *argv[])
 
     for (int64_t i = 0; i < n_threads; ++i)
     {
-      threads.emplace_back(work, std::cref(r), base + (!i ? remainder : 0), std::ref(hits_count), gen_init,
-                           std::ref(m));
+      threads.emplace_back(work, std::cref(r), base + (!i ? remainder : 0), std::ref(hits_count), gen_init);
     }
     // Дожидаемся потоки
     for (auto &t : threads)
