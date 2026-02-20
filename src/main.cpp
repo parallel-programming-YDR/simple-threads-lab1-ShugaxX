@@ -1,13 +1,14 @@
 #include <chrono>
-#include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <random>
 #include <thread>
 
-void work(const int64_t &r, const int64_t tries, int64_t &hits_count, std::mutex &m,
-          std::uniform_real_distribution<double> &dist, std::mt19937 &gen)
+void work(const int64_t &r, const int64_t tries, int64_t &hits_count, int64_t seed, std::mutex &m)
 {
+  std::mt19937                           gen(seed);
+  std::uniform_real_distribution<double> dist(0.0, r);
+
   int64_t hits_count_local = 0;
   for (int64_t i = 0; i < tries; ++i)
   {
@@ -41,7 +42,6 @@ int main(int argc, char *argv[])
 
   int64_t    tries    = std::stoll(argv[1]);
   int64_t    gen_init = argc == 3 ? std::stoll(argv[2]) : 0;
-  int64_t    count    = 0;
   std::mutex m;
 
   int64_t n_threads = 0;
@@ -54,10 +54,7 @@ int main(int argc, char *argv[])
       std::cerr << "Radius of circle and number of threads must be positive\n";
       return 1;
     }
-    // У каждого потока свой генератор (иначе приходилось защищать единственный генератор
-    // мьютексом, что приводило в итоге к сильному замедлению программы)
-    std::mt19937                           gen(gen_init + (count++));
-    std::uniform_real_distribution<double> dist(0.0, r);
+
     // Точки, попавшие в окружность
     int64_t                  hits_count = 0;
     std::vector<std::thread> threads;
@@ -69,8 +66,8 @@ int main(int argc, char *argv[])
 
     for (int64_t i = 0; i < n_threads; ++i)
     {
-      threads.emplace_back(work, std::cref(r), base + (!i ? remainder : 0), std::ref(hits_count), std::ref(m),
-                           std::ref(dist), std::ref(gen));
+      threads.emplace_back(work, std::cref(r), base + (!i ? remainder : 0), std::ref(hits_count), gen_init,
+                           std::ref(m));
     }
     // Дожидаемся потоки
     for (auto &t : threads)
@@ -84,7 +81,7 @@ int main(int argc, char *argv[])
     // 4 - так как в функции work мы пуляли точками только в первый квадрант [0,r] x [0,r]
     double area = 4 * square_area * (static_cast<double>(hits_count) / tries);
 
-    std::cout << std::setprecision(4) << area << " " << ms.count() << "\n";
+    std::cout << std::setprecision(4) << ms.count() << " " << area << "\n";
   }
   return 0;
 }
